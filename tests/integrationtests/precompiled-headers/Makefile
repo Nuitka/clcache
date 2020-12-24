@@ -7,7 +7,7 @@ APP = myapp.exe
 STABLEHDRS = stable.h another.h
 
 # List the final header file to be precompiled here:
-BOUNDRY = stable.h
+BOUNDARY = stable.h
 
 # List header files under development here:
 UNSTABLEHDRS = unstable.h
@@ -21,15 +21,15 @@ $(APP): $(OBJS)
 
 # Compile myapp
 myapp.obj  : myapp.cpp $(UNSTABLEHDRS)  stable.pch
-    $(CPP) $(CPPFLAGS) /Yu$(BOUNDRY) myapp.cpp
+    $(CPP) $(CPPFLAGS) /Yu$(BOUNDARY) myapp.cpp
 
 # Compile applib
 #the_applib.obj : applib.cpp $(UNSTABLEHDRS) stable.pch
-#    $(CPP) $(CPPFLAGS) /Yu$(BOUNDRY) /Fothe_applib.obj applib.cpp
+#    $(CPP) $(CPPFLAGS) /Yu$(BOUNDARY) /Fothe_applib.obj applib.cpp
 
 # Compile headers
 stable.pch : $(STABLEHDRS)
-    $(CPP) $(CPPFLAGS) /Yc$(BOUNDRY) applib.cpp
+    $(CPP) $(CPPFLAGS) /Yc$(BOUNDARY) applib.cpp
 
 .PHONY: clean
 

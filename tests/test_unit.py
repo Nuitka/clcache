@@ -76,7 +76,7 @@ class TestHelperFunctions(unittest.TestCase):
 
         # Note: raw string literals cannot end in an odd number of backslashes
         # https://docs.python.org/3/faq/design.html#why-can-t-raw-strings-r-strings-end-with-a-backslash
-        # So we consistenly use basic literals
+        # So we consistently use basic literals
         self.assertEqual(clcache.normalizeBaseDir("c:"), "c:")
         self.assertEqual(clcache.normalizeBaseDir("c:\\projects"), "c:\\projects")
 

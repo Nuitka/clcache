@@ -272,7 +272,7 @@ class ManifestRepository:
         # exceptions to this rule is the /MP switch, which only defines how many
         # compiler processes are running simultaneusly.  Arguments that specify
         # the compiler where to find the source files are parsed to replace
-        # ocurrences of CLCACHE_BASEDIR by a placeholder.
+        # occurrences of CLCACHE_BASEDIR by a placeholder.
         arguments, inputFiles = CommandLineAnalyzer.parseArgumentsAndInputFiles(commandLine)
         collapseBasedirInCmdPath = lambda path: collapseBasedirToPlaceholder(os.path.normcase(os.path.abspath(path)))
 

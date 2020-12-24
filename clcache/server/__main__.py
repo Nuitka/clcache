@@ -59,7 +59,7 @@ class HashCache:
 
     def isExcluded(self, dirname):
         # as long as we do not have more than _MAXCACHE regex we can
-        # rely on the internal cacheing of re.match
+        # rely on the internal caching of re.match
         excluded = any(re.search(pattern, dirname, re.IGNORECASE) for pattern in self._excludePatterns)
         if excluded:
             logging.debug("NOT watching %s", dirname)
@@ -130,7 +130,7 @@ def main():
     parser = argparse.ArgumentParser(description='Server process for clcache to cache hash values of headers \
                                                   and observe them for changes.')
     parser.add_argument('--exclude', metavar='REGEX', action='append', \
-                        help='Regex ( re.search() ) for exluding of directory watching. Can be specified \
+                        help='Regex ( re.search() ) for excluding of directory watching. Can be specified \
                               multiple times. Example: --exclude \\\\build\\\\')
     parser.add_argument('--disable_watching', action='store_true', help='Disable watching of directories which \
                          we have in the cache.')

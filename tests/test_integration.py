@@ -686,7 +686,7 @@ class TestHeaderMiss(unittest.TestCase):
             self.assertEqual(process.returncode, 2)
             self.assertTrue("C1083" in stdout.decode(clcache.CL_DEFAULT_CODEC))
 
-    # When a header included by another header becomes obsolete and disappers,
+    # When a header included by another header becomes obsolete and disappears,
     # we must fall back to real compiler.
     def testObsoleteHeaderDisappears(self):
         # A includes B

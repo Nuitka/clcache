@@ -85,7 +85,7 @@ CLCACHE_NODIRECT::
     Disable direct mode. If this variable is set, clcache will always run
     preprocessor on source file and will hash preprocessor output to get cache
     key. Use this if you experience problems with direct mode or if you need
-    built-in macroses like \__TIME__ to work correctly.
+    built-in macros like \__TIME__ to work correctly.
 CLCACHE_BASEDIR::
     Has effect only when direct mode is on. Set this to path to root directory
     of your project. This allows clcache to cache relative paths, so if you
@@ -100,7 +100,7 @@ CLCACHE_OBJECT_CACHE_TIMEOUT_MS::
 CLCACHE_PROFILE::
     If this variable is set, clcache will generate profiling information about
     how the runtime is spent in the clcache code. For each invocation, clcache
-    will generate a file with a name similiar to 'clcache-<hashsum>.prof'. You
+    will generate a file with a name similar to 'clcache-<hashsum>.prof'. You
     can aggregate these files and generate a report by running the
     'showprofilereport.py' script.
 CLCACHE_SERVER::
