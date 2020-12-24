@@ -7,9 +7,8 @@ from setuptools import setup, find_packages
 setup(
     name='clcache',
     description='MSVC compiler cache',
-    author='Frerich Raabe',
-    author_email='raabe@froglogic.com',
-    url='https://github.com/frerich/clcache',
+    author='Frerich Raabe <raabe@froglogic.com>, Kay Hayen <kay.hayen@gmail.com>',
+    url='https://github.com/Nuitka/clcache',
     packages=find_packages(),
     platforms='any',
     keywords=[],
