@@ -12,17 +12,13 @@ If the script is called in an unsupported way (e.g. if the compiler is
 called for linking), the script will simply relay the invocation to the real
 'cl.exe' program.
 
-image:https://ci.appveyor.com/api/projects/status/sf98y2686r00q6ga/branch/master?svg=true[Build status, link="https://ci.appveyor.com/project/frerich/clcache"]
-image:https://codecov.io/gh/frerich/clcache/branch/master/graph/badge.svg[Code coverage, link="https://codecov.io/gh/frerich/clcache"]
+image:https://ci.appveyor.com/api/projects/status/sf98y2686r00q6ga/branch/master?svg=true[Build status, link="https://ci.appveyor.com/project/Nuitka/clcache"]
 
 Installation
 ~~~~~~~~~~~~
 
-Please see the https://github.com/frerich/clcache/wiki[Wiki] for instructions
-on how to https://github.com/frerich/clcache/wiki/Installation[install] clcache
-and different approaches on how to
-https://github.com/frerich/clcache/wiki/Integration[integrate] it into a build
-system.
+Please see the README for instructions on how to install clcache and different
+approaches on how to integrate it into a build system.
 
 Options
 ~~~~~~~
@@ -49,7 +45,7 @@ Options
 compiler::
     It is, optionally, possible to specify the full path to the compiler as the
     first argument on the command line, in the style of ccache, instead of using
-    the CLCACHE_CL environment variable or searching the path for cl.exe   
+    the CLCACHE_CL environment variable or searching the path for cl.exe
 
 Environment Variables
 ~~~~~~~~~~~~~~~~~~~~~
@@ -172,8 +168,110 @@ by the compiler) is copied to the cache.
 
 Caveats
 ~~~~~~~
-For known caveats, please see the
-https://github.com/frerich/clcache/wiki/Caveats[Caveats wiki page].
+
+
+No cache hits when building via Visual Studio IDE or MSBuild
+------------------------------------------------------------
+
+Various people (see e.g. GitHub issues #33 or #135) reported that they do not
+see any cache hits when running clcache via the MSBuild tool, which is the
+build tool executed by the Visual Studio IDE. The symptom is that a clean
+rebuild, or just cleaning, a project and then rebuilding does not cause any
+cache hits even though nothing changed.
+
+The reason for this is that the CL Task used by MSBuild has a feature which
+makes it track all files written while executing a task, and when cleaning the
+project all those files are deleted. Alas, this also causes any cached files
+created by clcache to be tracked and hence deleted. The documentation explains:
+
+[..] TLogFileWrites - Optional ITaskItem[] parameter. Specifies an array of
+items that represent the write file tracking logs. A write-file tracking log
+(.tlog) contains the names of the output files that are written by a task, and
+is used by the project build system to support incremental builds. For more
+information, see the TrackerLogDirectory and TrackFileAccess parameters in this
+table. [..]
+
+TrackFileAccess - Optional Boolean parameter. If true, tracks file access
+patterns. For more information, see the TLogReadFiles and TLogWriteFiles
+parameters in this table.
+
+To fix this, open the .vcxproj file of your project and extend (or add) the
+Globals property group such that the TrackFileAccess parameter is set to false:
+
+<PropertyGroup Label="Globals">
+    ...
+    <TrackFileAccess>false</TrackFileAccess>
+</PropertyGroup>
+If you don't want to modify these properties in your .vcxproj file you pass them while invoking MSBuild directly. Other useful properties in combination with clcache are /p:CLToolExe=clcache.exe /p:CLToolPath=c:\path\to\the\clcache
+
+msbuild.exe /p:TrackFileAccess=false /p:CLToolExe=clcache.exe /p:CLToolPath=c:\path\to\the\clcache
+
+Race conditions when writing to .tlog files
+-------------------------------------------
+
+The file tracking functionality of Visual Studio mentioned earlier can cause a
+different symptom which causes an error message to be written to the standard
+output looking like
+
+FileTracker : error FTK1011: could not create the new file tracking log file:
+[...].1.tlog. The file exists.
+
+This appears to be a known defect in MSbuild; the workaround is to disable file
+access tracking as described above.
+
+Slow performance when using a clcache executable built via PyInstaller
+----------------------------------------------------------------------
+
+The README file suggests to use PyInstaller to simplify deployment of clcache
+on build machines. While this is true, it was noted that using the --onefile
+argument to pyinstaller might slow things down considerably.
+
+Indeed, the documentation explains:
+
+The one executable file contains an embedded archive of all the Python modules
+used by your script, as well as compressed copies of any non-Python support
+files (e.g. .so files). The bootloader uncompresses the support files and
+writes copies into the the temporary folder. This can take a little time. That
+is why a one-file app is a little slower to start than a one-folder app.
+
+To avoid this overhead, make sure that you do not use the --onefile argument.
+
+clcachesrv prevents deletion of directories containing include files for which hash sums are cached
+---------------------------------------------------------------------------------------------------
+
+The way in which the clcachesrv server process for caching hash sums of include
+file works prevents that the directories containing such include files cannot
+be deleted anymore since clcachesrv monitors the file system to watch those
+files for changes (in order to invalidate the cached hash sum). See this
+comment for some internal details on what's going on.
+
+To work around this problem, an --exclude argument can be passed to the
+clcachesrv to instruct it to not bother caching the hash sums of files in
+certain paths. The argument takes a regular expression (hence, special
+characters need to be escaped) and is used like
+
+$ python clcachesrv.py --exclude \\build\\
+
+Usually, there is no benefit in caching hash sums of file sin build directories
+- instead, just the include files of standard libraries (e.g. the C++ library
+or common 3rd party libraries) need to be considered.
+
+Changes to INCLUDE and LIBPATH environment variables are not detected
+---------------------------------------------------------------------
+
+If the INCLUDE (for #include statements) or LIBPATH (for #using statements)
+environment variables are changed between compilations clcache will not notice,
+and may erroneously return a cached object file that was compiled with a
+different settings. The most likely reason for a change in these variables is
+switching between different installations of Visual Studio.
+
+Workrounds include:
+
+clearing the cache when changing the variables setting CLCACHE_NODIRECT. This
+will force clcache to run the preprocessor and base the caching on its output.
+The preprocessor will respond correctly to changes in INCLUDE. Note that this
+only handles changes to INCLUDE (but if your code doesn't use #using, that is
+all you care about).
 
 License Terms
 ~~~~~~~~~~~~~
@@ -189,4 +287,3 @@ Blechmann, Tilo Wiedera and other contributors.
 
 This program was heavily inspired by http://ccache.samba.org[ccache], a
 compiler cache for the http://gcc.gnu.org[GNU Compiler Collection].
-
