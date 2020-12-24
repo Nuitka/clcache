@@ -6,21 +6,20 @@
 # full text of which is available in the accompanying LICENSE file at the
 # root directory of this project.
 #
-import os
 import fnmatch
+import os
 import pstats
 
 stats = pstats.Stats()
 
 for basedir, _, filenames in os.walk(os.getcwd()):
     for filename in filenames:
-        if fnmatch.fnmatch(filename, 'clcache-*.prof'):
+        if fnmatch.fnmatch(filename, "clcache-*.prof"):
             path = os.path.join(basedir, filename)
-            print('Reading {}...'.format(path))
+            print("Reading {}...".format(path))
             stats.add(path)
 
 stats.strip_dirs()
-stats.sort_stats('cumulative')
+stats.sort_stats("cumulative")
 stats.print_stats()
 stats.print_callers()
-

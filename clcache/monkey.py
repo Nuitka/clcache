@@ -1,10 +1,10 @@
 import os
-import sys
 import shutil
-
-from typing import List
+import sys
 from contextlib import suppress
-from os.path import join, dirname, isfile
+from os.path import dirname, isfile, join
+from typing import List
+
 
 def patch_distutils() -> None:
     # Try to import numpy.distutils first so that we
@@ -15,15 +15,17 @@ def patch_distutils() -> None:
         from numpy.distutils import ccompiler as _
 
     from distutils import ccompiler
+
     from clcache import __main__
 
     clcache_main = [sys.executable, __main__.__file__]
     ccompiler_spawn = ccompiler.CCompiler.spawn
+
     def msvc_compiler_spawn(self: ccompiler.CCompiler, cmd: List[str]) -> None:
-        if not hasattr(self, 'cc'):  # type: ignore
+        if not hasattr(self, "cc"):  # type: ignore
             return ccompiler_spawn(self, cmd)
 
-        if os.path.basename(self.cc) not in ['cl', 'cl.exe']:  # type: ignore
+        if os.path.basename(self.cc) not in ["cl", "cl.exe"]:  # type: ignore
             return ccompiler_spawn(self, cmd)
 
         if cmd[0] != self.cc:  # type: ignore
@@ -32,16 +34,16 @@ def patch_distutils() -> None:
 
         cmd = clcache_main + cmd[1:]
         # Set the environment variables so that clcache can run
-        os.environ['CLCACHE_CL'] = self.cc  # type: ignore
-        print('Note: patching distutils because $env:USE_CLCACHE is set')
-        
+        os.environ["CLCACHE_CL"] = self.cc  # type: ignore
+        print("Note: patching distutils because $env:USE_CLCACHE is set")
+
         return ccompiler_spawn(self, cmd)
 
     ccompiler.CCompiler.spawn = msvc_compiler_spawn  # type: ignore
 
 
 def main() -> None:
-    if os.environ.get('USE_CLCACHE') != '1':
+    if os.environ.get("USE_CLCACHE") != "1":
         return
 
     patch_distutils()

@@ -6,14 +6,11 @@
 # full text of which is available in the accompanying LICENSE file at the
 # root directory of this project.
 #
-from collections import defaultdict, namedtuple
-from ctypes import windll, wintypes
-from shutil import copyfile, copyfileobj, rmtree, which
 import argparse
-import cProfile
 import codecs
 import concurrent.futures
 import contextlib
+import cProfile
 import errno
 import gzip
 import hashlib
@@ -25,8 +22,12 @@ import re
 import subprocess
 import sys
 import threading
+from collections import defaultdict, namedtuple
+from ctypes import windll, wintypes
+from shutil import copyfile, copyfileobj, rmtree, which
 from tempfile import TemporaryFile
-from typing import Any, List, Tuple, Iterator
+from typing import Any, Iterator, List, Tuple
+
 from atomicwrites import atomic_write
 
 VERSION = "4.2.0-dev"
@@ -39,13 +40,14 @@ OUTPUT_LOCK = threading.Lock()
 # fall back to os.listdir if not found
 # same for scandir.walk
 try:
-    import scandir # pylint: disable=wrong-import-position
+    import scandir  # pylint: disable=wrong-import-position
+
     WALK = scandir.walk
     LIST = scandir.scandir
 except ImportError:
     WALK = os.walk
     try:
-        LIST = os.scandir # type: ignore # pylint: disable=no-name-in-module
+        LIST = os.scandir  # type: ignore # pylint: disable=no-name-in-module
     except AttributeError:
         LIST = os.listdir
 
@@ -53,10 +55,10 @@ except ImportError:
 # output.txt and stderr.txt.
 # This codec is up to us and only used for clcache internal storage.
 # For possible values see https://docs.python.org/2/library/codecs.html
-CACHE_COMPILER_OUTPUT_STORAGE_CODEC = 'utf-8'
+CACHE_COMPILER_OUTPUT_STORAGE_CODEC = "utf-8"
 
 # The cl default codec
-CL_DEFAULT_CODEC = 'mbcs'
+CL_DEFAULT_CODEC = "mbcs"
 
 # Manifest file will have at most this number of hash lists in it. Need to avoi
 # manifests grow too large.
@@ -65,7 +67,7 @@ MAX_MANIFEST_HASHES = 100
 # String, by which BASE_DIR will be replaced in paths, stored in manifests.
 # ? is invalid character for file name, so it seems ok
 # to use it as mark for relative path.
-BASEDIR_REPLACEMENT = '?'
+BASEDIR_REPLACEMENT = "?"
 
 # Define some Win32 API constants here to avoid dependency on win32pipe
 NMPWAIT_WAIT_FOREVER = wintypes.DWORD(0xFFFFFFFF)
@@ -75,9 +77,14 @@ ERROR_PIPE_BUSY = 231
 # `includeFiles`: list of paths to include files, which this source file uses
 # `includesContentsHash`: hash of the contents of the includeFiles
 # `objectHash`: hash of the object in cache
-ManifestEntry = namedtuple('ManifestEntry', ['includeFiles', 'includesContentHash', 'objectHash'])
+ManifestEntry = namedtuple(
+    "ManifestEntry", ["includeFiles", "includesContentHash", "objectHash"]
+)
 
-CompilerArtifacts = namedtuple('CompilerArtifacts', ['objectFilePath', 'stdout', 'stderr'])
+CompilerArtifacts = namedtuple(
+    "CompilerArtifacts", ["objectFilePath", "stdout", "stderr"]
+)
+
 
 def printBinary(stream, rawData):
     with OUTPUT_LOCK:
@@ -97,7 +104,7 @@ def filesBeneath(baseDir):
 
 
 def childDirectories(path, absolute=True):
-    supportsScandir = (LIST != os.listdir) # pylint: disable=comparison-with-callable
+    supportsScandir = LIST != os.listdir  # pylint: disable=comparison-with-callable
     for entry in LIST(path):
         if supportsScandir:
             if entry.is_dir():
@@ -121,14 +128,16 @@ def normalizeBaseDir(baseDir):
 
 def getCachedCompilerConsoleOutput(path):
     try:
-        with open(path, 'rb') as f:
+        with open(path, "rb") as f:
             return f.read().decode(CACHE_COMPILER_OUTPUT_STORAGE_CODEC)
     except IOError:
-        return ''
+        return ""
+
 
 def setCachedCompilerConsoleOutput(path, output):
-    with open(path, 'wb') as f:
+    with open(path, "wb") as f:
         f.write(output.encode(CACHE_COMPILER_OUTPUT_STORAGE_CODEC))
+
 
 class IncludeNotFoundException(Exception):
     pass
@@ -173,7 +182,9 @@ class Manifest:
 
     def touchEntry(self, objectHash):
         """Moves entry in entryIndex position to the top of entries()"""
-        entryIndex = next((i for i, e in enumerate(self.entries()) if e.objectHash == objectHash), 0)
+        entryIndex = next(
+            (i for i, e in enumerate(self.entries()) if e.objectHash == objectHash), 0
+        )
         self._entries.insert(0, self._entries.pop(entryIndex))
 
 
@@ -190,12 +201,16 @@ class ManifestSection:
 
     def setManifest(self, manifestHash, manifest):
         manifestPath = self.manifestPath(manifestHash)
-        printTraceStatement("Writing manifest with manifestHash = {} to {}".format(manifestHash, manifestPath))
+        printTraceStatement(
+            "Writing manifest with manifestHash = {} to {}".format(
+                manifestHash, manifestPath
+            )
+        )
         ensureDirectoryExists(self.manifestSectionDir)
         with atomic_write(manifestPath, overwrite=True) as outFile:
             # Converting namedtuple to JSON via OrderedDict preserves key names and keys order
             entries = [e._asdict() for e in manifest.entries()]
-            jsonobject = {'entries': entries}
+            jsonobject = {"entries": entries}
             json.dump(jsonobject, outFile, sort_keys=True, indent=2)
 
     def getManifest(self, manifestHash):
@@ -203,10 +218,16 @@ class ManifestSection:
         if not os.path.exists(fileName):
             return None
         try:
-            with open(fileName, 'r') as inFile:
+            with open(fileName, "r") as inFile:
                 doc = json.load(inFile)
-                return Manifest([ManifestEntry(e['includeFiles'], e['includesContentHash'], e['objectHash'])
-                                 for e in doc['entries']])
+                return Manifest(
+                    [
+                        ManifestEntry(
+                            e["includeFiles"], e["includesContentHash"], e["objectHash"]
+                        )
+                        for e in doc["entries"]
+                    ]
+                )
         except IOError:
             return None
         except ValueError:
@@ -241,7 +262,9 @@ class ManifestRepository:
         return ManifestSection(os.path.join(self._manifestsRootDir, manifestHash[:2]))
 
     def sections(self):
-        return (ManifestSection(path) for path in childDirectories(self._manifestsRootDir))
+        return (
+            ManifestSection(path) for path in childDirectories(self._manifestsRootDir)
+        )
 
     def clean(self, maxManifestsSize):
         manifestFileInfos = []
@@ -273,21 +296,28 @@ class ManifestRepository:
         # compiler processes are running simultaneusly.  Arguments that specify
         # the compiler where to find the source files are parsed to replace
         # occurrences of CLCACHE_BASEDIR by a placeholder.
-        arguments, inputFiles = CommandLineAnalyzer.parseArgumentsAndInputFiles(commandLine)
-        collapseBasedirInCmdPath = lambda path: collapseBasedirToPlaceholder(os.path.normcase(os.path.abspath(path)))
+        arguments, inputFiles = CommandLineAnalyzer.parseArgumentsAndInputFiles(
+            commandLine
+        )
+        collapseBasedirInCmdPath = lambda path: collapseBasedirToPlaceholder(
+            os.path.normcase(os.path.abspath(path))
+        )
 
         commandLine = []
         argumentsWithPaths = ("AI", "I", "FU")
         for k in sorted(arguments.keys()):
             if k in argumentsWithPaths:
-                commandLine.extend(["/" + k + collapseBasedirInCmdPath(arg) for arg in arguments[k]])
+                commandLine.extend(
+                    ["/" + k + collapseBasedirInCmdPath(arg) for arg in arguments[k]]
+                )
             else:
                 commandLine.extend(["/" + k + arg for arg in arguments[k]])
 
         commandLine.extend(collapseBasedirInCmdPath(arg) for arg in inputFiles)
 
         additionalData = "{}|{}|{}".format(
-            compilerHash, commandLine, ManifestRepository.MANIFEST_FILE_FORMAT_VERSION)
+            compilerHash, commandLine, ManifestRepository.MANIFEST_FILE_FORMAT_VERSION
+        )
         return getFileHash(sourceFile, additionalData)
 
     @staticmethod
@@ -300,26 +330,26 @@ class ManifestRepository:
 
     @staticmethod
     def getIncludesContentHashForHashes(listOfHashes):
-        return HashAlgorithm(','.join(listOfHashes).encode()).hexdigest()
+        return HashAlgorithm(",".join(listOfHashes).encode()).hexdigest()
 
 
 class CacheLock:
-    """ Implements a lock for the object cache which
-    can be used in 'with' statements. """
+    """Implements a lock for the object cache which
+    can be used in 'with' statements."""
+
     INFINITE = 0xFFFFFFFF
     WAIT_ABANDONED_CODE = 0x00000080
     WAIT_TIMEOUT_CODE = 0x00000102
 
     def __init__(self, mutexName, timeoutMs):
-        self._mutexName = 'Local\\' + mutexName
+        self._mutexName = "Local\\" + mutexName
         self._mutex = None
         self._timeoutMs = timeoutMs
 
     def createMutex(self):
         self._mutex = windll.kernel32.CreateMutexW(
-            None,
-            wintypes.BOOL(False),
-            self._mutexName)
+            None, wintypes.BOOL(False), self._mutexName
+        )
         assert self._mutex
 
     def __enter__(self):
@@ -336,17 +366,20 @@ class CacheLock:
         if not self._mutex:
             self.createMutex()
         result = windll.kernel32.WaitForSingleObject(
-            self._mutex, wintypes.INT(self._timeoutMs))
+            self._mutex, wintypes.INT(self._timeoutMs)
+        )
         if result not in [0, self.WAIT_ABANDONED_CODE]:
             if result == self.WAIT_TIMEOUT_CODE:
-                errorString = \
-                    'Failed to acquire lock {} after {}ms; ' \
-                    'try setting CLCACHE_OBJECT_CACHE_TIMEOUT_MS environment variable to a larger value.'.format(
-                        self._mutexName, self._timeoutMs)
+                errorString = (
+                    "Failed to acquire lock {} after {}ms; "
+                    "try setting CLCACHE_OBJECT_CACHE_TIMEOUT_MS environment variable to a larger value.".format(
+                        self._mutexName, self._timeoutMs
+                    )
+                )
             else:
-                errorString = 'Error! WaitForSingleObject returns {result}, last error {error}'.format(
-                    result=result,
-                    error=windll.kernel32.GetLastError())
+                errorString = "Error! WaitForSingleObject returns {result}, last error {error}".format(
+                    result=result, error=windll.kernel32.GetLastError()
+                )
             raise CacheLockException(errorString)
 
     def release(self):
@@ -354,15 +387,15 @@ class CacheLock:
 
     @staticmethod
     def forPath(path):
-        timeoutMs = int(os.environ.get('CLCACHE_OBJECT_CACHE_TIMEOUT_MS', 10 * 1000))
-        lockName = path.replace(':', '-').replace('\\', '-')
+        timeoutMs = int(os.environ.get("CLCACHE_OBJECT_CACHE_TIMEOUT_MS", 10 * 1000))
+        lockName = path.replace(":", "-").replace("\\", "-")
         return CacheLock(lockName, timeoutMs)
 
 
 class CompilerArtifactsSection:
-    OBJECT_FILE = 'object'
-    STDOUT_FILE = 'output.txt'
-    STDERR_FILE = 'stderr.txt'
+    OBJECT_FILE = "object"
+    STDOUT_FILE = "output.txt"
+    STDERR_FILE = "stderr.txt"
 
     def __init__(self, compilerArtifactsSectionDir):
         self.compilerArtifactsSectionDir = compilerArtifactsSectionDir
@@ -375,7 +408,9 @@ class CompilerArtifactsSection:
         return childDirectories(self.compilerArtifactsSectionDir, absolute=False)
 
     def cachedObjectName(self, key):
-        return os.path.join(self.cacheEntryDir(key), CompilerArtifactsSection.OBJECT_FILE)
+        return os.path.join(
+            self.cacheEntryDir(key), CompilerArtifactsSection.OBJECT_FILE
+        )
 
     def hasEntry(self, key):
         return os.path.exists(self.cacheEntryDir(key))
@@ -383,19 +418,25 @@ class CompilerArtifactsSection:
     def setEntry(self, key, artifacts):
         cacheEntryDir = self.cacheEntryDir(key)
         # Write new files to a temporary directory
-        tempEntryDir = cacheEntryDir + '.new'
+        tempEntryDir = cacheEntryDir + ".new"
         # Remove any possible left-over in tempEntryDir from previous executions
         rmtree(tempEntryDir, ignore_errors=True)
         ensureDirectoryExists(tempEntryDir)
         if artifacts.objectFilePath is not None:
-            dstFilePath = os.path.join(tempEntryDir, CompilerArtifactsSection.OBJECT_FILE)
+            dstFilePath = os.path.join(
+                tempEntryDir, CompilerArtifactsSection.OBJECT_FILE
+            )
             copyOrLink(artifacts.objectFilePath, dstFilePath, True)
             size = os.path.getsize(dstFilePath)
-        setCachedCompilerConsoleOutput(os.path.join(tempEntryDir, CompilerArtifactsSection.STDOUT_FILE),
-                                       artifacts.stdout)
-        if artifacts.stderr != '':
-            setCachedCompilerConsoleOutput(os.path.join(tempEntryDir, CompilerArtifactsSection.STDERR_FILE),
-                                           artifacts.stderr)
+        setCachedCompilerConsoleOutput(
+            os.path.join(tempEntryDir, CompilerArtifactsSection.STDOUT_FILE),
+            artifacts.stdout,
+        )
+        if artifacts.stderr != "":
+            setCachedCompilerConsoleOutput(
+                os.path.join(tempEntryDir, CompilerArtifactsSection.STDERR_FILE),
+                artifacts.stderr,
+            )
         # Replace the full cache entry atomically
         os.replace(tempEntryDir, cacheEntryDir)
         return size
@@ -405,9 +446,13 @@ class CompilerArtifactsSection:
         cacheEntryDir = self.cacheEntryDir(key)
         return CompilerArtifacts(
             os.path.join(cacheEntryDir, CompilerArtifactsSection.OBJECT_FILE),
-            getCachedCompilerConsoleOutput(os.path.join(cacheEntryDir, CompilerArtifactsSection.STDOUT_FILE)),
-            getCachedCompilerConsoleOutput(os.path.join(cacheEntryDir, CompilerArtifactsSection.STDERR_FILE))
-            )
+            getCachedCompilerConsoleOutput(
+                os.path.join(cacheEntryDir, CompilerArtifactsSection.STDOUT_FILE)
+            ),
+            getCachedCompilerConsoleOutput(
+                os.path.join(cacheEntryDir, CompilerArtifactsSection.STDERR_FILE)
+            ),
+        )
 
 
 class CompilerArtifactsRepository:
@@ -415,13 +460,20 @@ class CompilerArtifactsRepository:
         self._compilerArtifactsRootDir = compilerArtifactsRootDir
 
     def section(self, key):
-        return CompilerArtifactsSection(os.path.join(self._compilerArtifactsRootDir, key[:2]))
+        return CompilerArtifactsSection(
+            os.path.join(self._compilerArtifactsRootDir, key[:2])
+        )
 
     def sections(self):
-        return (CompilerArtifactsSection(path) for path in childDirectories(self._compilerArtifactsRootDir))
+        return (
+            CompilerArtifactsSection(path)
+            for path in childDirectories(self._compilerArtifactsRootDir)
+        )
 
     def removeEntry(self, keyToBeRemoved):
-        compilerArtifactsDir = self.section(keyToBeRemoved).cacheEntryDir(keyToBeRemoved)
+        compilerArtifactsDir = self.section(keyToBeRemoved).cacheEntryDir(
+            keyToBeRemoved
+        )
         rmtree(compilerArtifactsDir, ignore_errors=True)
 
     def clean(self, maxCompilerArtifactsSize):
@@ -447,7 +499,7 @@ class CompilerArtifactsRepository:
             if currentSizeObjects < maxCompilerArtifactsSize:
                 break
 
-        return len(objectInfos)-removedItems, currentSizeObjects
+        return len(objectInfos) - removedItems, currentSizeObjects
 
     @staticmethod
     def computeKeyDirect(manifestHash, includesContentHash):
@@ -460,19 +512,29 @@ class CompilerArtifactsRepository:
     def computeKeyNodirect(compilerBinary, commandLine, environment):
         ppcmd = ["/EP"] + [arg for arg in commandLine if arg not in ("-c", "/c")]
 
-        returnCode, preprocessedSourceCode, ppStderrBinary = \
-            invokeRealCompiler(compilerBinary, ppcmd, captureOutput=True, outputAsString=False, environment=environment)
+        returnCode, preprocessedSourceCode, ppStderrBinary = invokeRealCompiler(
+            compilerBinary,
+            ppcmd,
+            captureOutput=True,
+            outputAsString=False,
+            environment=environment,
+        )
 
         if returnCode != 0:
-            errMsg = ppStderrBinary.decode(CL_DEFAULT_CODEC) + "\nclcache: preprocessor failed"
+            errMsg = (
+                ppStderrBinary.decode(CL_DEFAULT_CODEC)
+                + "\nclcache: preprocessor failed"
+            )
             raise CompilerFailedException(returnCode, errMsg)
 
         compilerHash = getCompilerHash(compilerBinary)
-        normalizedCmdLine = CompilerArtifactsRepository._normalizedCommandLine(commandLine)
+        normalizedCmdLine = CompilerArtifactsRepository._normalizedCommandLine(
+            commandLine
+        )
 
         h = HashAlgorithm()
         h.update(compilerHash.encode("UTF-8"))
-        h.update(' '.join(normalizedCmdLine).encode("UTF-8"))
+        h.update(" ".join(normalizedCmdLine).encode("UTF-8"))
         h.update(preprocessedSourceCode)
         return h.hexdigest()
 
@@ -482,8 +544,21 @@ class CompilerArtifactsRepository:
         # preprocessor; the preprocessor's output is already included into the
         # hash sum so we don't have to care about these switches in the
         # command line as well.
-        argsToStrip = ("AI", "C", "E", "P", "FI", "u", "X",
-                       "FU", "D", "EP", "Fx", "U", "I")
+        argsToStrip = (
+            "AI",
+            "C",
+            "E",
+            "P",
+            "FI",
+            "u",
+            "X",
+            "FU",
+            "D",
+            "EP",
+            "Fx",
+            "U",
+            "I",
+        )
 
         # Also remove the switch for specifying the output file name; we don't
         # want two invocations which are identical except for the output file
@@ -495,8 +570,12 @@ class CompilerArtifactsRepository:
         # command line).
         argsToStrip += ("MP",)
 
-        return [arg for arg in cmdline
-                if not (arg[0] in "/-" and arg[1:].startswith(argsToStrip))]
+        return [
+            arg
+            for arg in cmdline
+            if not (arg[0] in "/-" and arg[1:].startswith(argsToStrip))
+        ]
+
 
 class CacheFileStrategy:
     def __init__(self, cacheDirectory=None):
@@ -513,7 +592,9 @@ class CacheFileStrategy:
 
         compilerArtifactsRootDir = os.path.join(self.dir, "objects")
         ensureDirectoryExists(compilerArtifactsRootDir)
-        self.compilerArtifactsRepository = CompilerArtifactsRepository(compilerArtifactsRootDir)
+        self.compilerArtifactsRepository = CompilerArtifactsRepository(
+            compilerArtifactsRootDir
+        )
 
         self.configuration = Configuration(os.path.join(self.dir, "config.txt"))
         self.statistics = Statistics(os.path.join(self.dir, "stats.txt"))
@@ -521,12 +602,12 @@ class CacheFileStrategy:
     def __str__(self):
         return "Disk cache at {}".format(self.dir)
 
-    @property # type: ignore
+    @property  # type: ignore
     @contextlib.contextmanager
     def lock(self):
-        with allSectionsLocked(self.manifestRepository), \
-             allSectionsLocked(self.compilerArtifactsRepository), \
-             self.statistics.lock:
+        with allSectionsLocked(self.manifestRepository), allSectionsLocked(
+            self.compilerArtifactsRepository
+        ), self.statistics.lock:
             yield
 
     def lockFor(self, key):
@@ -551,7 +632,7 @@ class CacheFileStrategy:
     def deserializeCacheEntry(self, key, objectData):
         path = self.pathForObject(key)
         ensureDirectoryExists(self.directoryForCache(key))
-        with open(path, 'wb') as f:
+        with open(path, "wb") as f:
             f.write(objectData)
         return path
 
@@ -559,7 +640,9 @@ class CacheFileStrategy:
         return self.compilerArtifactsRepository.section(cachekey).hasEntry(cachekey)
 
     def setManifest(self, manifestHash, manifest):
-        self.manifestRepository.section(manifestHash).setManifest(manifestHash, manifest)
+        self.manifestRepository.section(manifestHash).setManifest(
+            manifestHash, manifest
+        )
 
     def getManifest(self, manifestHash):
         return self.manifestRepository.section(manifestHash).getManifest(manifestHash)
@@ -575,14 +658,20 @@ class CacheFileStrategy:
 
         # Split limit in manifests (10 %) and objects (90 %)
         effectiveMaximumSizeManifests = effectiveMaximumSizeOverall * 0.1
-        effectiveMaximumSizeObjects = effectiveMaximumSizeOverall - effectiveMaximumSizeManifests
+        effectiveMaximumSizeObjects = (
+            effectiveMaximumSizeOverall - effectiveMaximumSizeManifests
+        )
 
         # Clean manifests
-        currentSizeManifests = self.manifestRepository.clean(effectiveMaximumSizeManifests)
+        currentSizeManifests = self.manifestRepository.clean(
+            effectiveMaximumSizeManifests
+        )
 
         # Clean artifacts
-        currentCompilerArtifactsCount, currentCompilerArtifactsSize = self.compilerArtifactsRepository.clean(
-            effectiveMaximumSizeObjects)
+        (
+            currentCompilerArtifactsCount,
+            currentCompilerArtifactsSize,
+        ) = self.compilerArtifactsRepository.clean(effectiveMaximumSizeObjects)
 
         stats.setCacheSize(currentCompilerArtifactsSize + currentSizeManifests)
         stats.setNumCacheEntries(currentCompilerArtifactsCount)
@@ -592,8 +681,10 @@ class Cache:
     def __init__(self, cacheDirectory=None):
         if os.environ.get("CLCACHE_MEMCACHED"):
             from .storage import CacheFileWithMemcacheFallbackStrategy
-            self.strategy = CacheFileWithMemcacheFallbackStrategy(os.environ.get("CLCACHE_MEMCACHED"),
-                                                                  cacheDirectory=cacheDirectory)
+
+            self.strategy = CacheFileWithMemcacheFallbackStrategy(
+                os.environ.get("CLCACHE_MEMCACHED"), cacheDirectory=cacheDirectory
+            )
         else:
             self.strategy = CacheFileStrategy(cacheDirectory=cacheDirectory)
 
@@ -647,7 +738,7 @@ class PersistentJSONDict:
         self._dict = {}
         self._fileName = fileName
         try:
-            with open(self._fileName, 'r') as f:
+            with open(self._fileName, "r") as f:
                 self._dict = json.load(f)
         except IOError:
             pass
@@ -674,7 +765,7 @@ class PersistentJSONDict:
 
 
 class Configuration:
-    _defaultValues = {"MaximumCacheSize": 1073741824} # 1 GiB
+    _defaultValues = {"MaximumCacheSize": 1073741824}  # 1 GiB
 
     def __init__(self, configurationFile):
         self._configurationFile = configurationFile
@@ -886,30 +977,35 @@ class InvalidArgumentError(AnalysisError):
 
 def getCompilerHash(compilerBinary):
     stat = os.stat(compilerBinary)
-    data = '|'.join([
-        str(stat.st_mtime),
-        str(stat.st_size),
-        VERSION,
-        ])
+    data = "|".join(
+        [
+            str(stat.st_mtime),
+            str(stat.st_size),
+            VERSION,
+        ]
+    )
     hasher = HashAlgorithm()
     hasher.update(data.encode("UTF-8"))
     return hasher.hexdigest()
 
 
 def getFileHashes(filePaths):
-    if 'CLCACHE_SERVER' in os.environ:
-        pipeName = r'\\.\pipe\clcache_srv'
+    if "CLCACHE_SERVER" in os.environ:
+        pipeName = r"\\.\pipe\clcache_srv"
         while True:
             try:
-                with open(pipeName, 'w+b') as f:
-                    f.write('\n'.join(filePaths).encode('utf-8'))
-                    f.write(b'\x00')
+                with open(pipeName, "w+b") as f:
+                    f.write("\n".join(filePaths).encode("utf-8"))
+                    f.write(b"\x00")
                     response = f.read()
-                    if response.startswith(b'!'):
+                    if response.startswith(b"!"):
                         raise pickle.loads(response[1:-1])
-                    return response[:-1].decode('utf-8').splitlines()
+                    return response[:-1].decode("utf-8").splitlines()
             except OSError as e:
-                if e.errno == errno.EINVAL and windll.kernel32.GetLastError() == ERROR_PIPE_BUSY:
+                if (
+                    e.errno == errno.EINVAL
+                    and windll.kernel32.GetLastError() == ERROR_PIPE_BUSY
+                ):
                     windll.kernel32.WaitNamedPipeW(pipeName, NMPWAIT_WAIT_FOREVER)
                 else:
                     raise
@@ -919,7 +1015,7 @@ def getFileHashes(filePaths):
 
 def getFileHash(filePath, additionalData=None):
     hasher = HashAlgorithm()
-    with open(filePath, 'rb') as inFile:
+    with open(filePath, "rb") as inFile:
         hasher.update(inFile.read())
     if additionalData is not None:
         # Encoding of this additional data does not really matter
@@ -936,17 +1032,19 @@ def getStringHash(dataString):
 
 
 def expandBasedirPlaceholder(path):
-    baseDir = normalizeBaseDir(os.environ.get('CLCACHE_BASEDIR'))
+    baseDir = normalizeBaseDir(os.environ.get("CLCACHE_BASEDIR"))
     if path.startswith(BASEDIR_REPLACEMENT):
         if not baseDir:
-            raise LogicException('No CLCACHE_BASEDIR set, but found relative path ' + path)
+            raise LogicException(
+                "No CLCACHE_BASEDIR set, but found relative path " + path
+            )
         return path.replace(BASEDIR_REPLACEMENT, baseDir, 1)
     else:
         return path
 
 
 def collapseBasedirToPlaceholder(path):
-    baseDir = normalizeBaseDir(os.environ.get('CLCACHE_BASEDIR'))
+    baseDir = normalizeBaseDir(os.environ.get("CLCACHE_BASEDIR"))
     if baseDir is None:
         return path
     else:
@@ -984,7 +1082,7 @@ def copyOrLink(srcFilePath, dstFilePath, writeCache=False):
     # If hardlinking fails for some reason (or it's not enabled), just
     # fall back to moving bytes around. Always to a temporary path first to
     # lower the chances of corrupting it.
-    tempDst = dstFilePath + '.tmp'
+    tempDst = dstFilePath + ".tmp"
 
     if "CLCACHE_COMPRESS" in os.environ:
         if "CLCACHE_COMPRESSLEVEL" in os.environ:
@@ -993,10 +1091,14 @@ def copyOrLink(srcFilePath, dstFilePath, writeCache=False):
             compress = 6
 
         if writeCache is True:
-            with open(srcFilePath, 'rb') as fileIn, gzip.open(tempDst, 'wb', compress) as fileOut:
+            with open(srcFilePath, "rb") as fileIn, gzip.open(
+                tempDst, "wb", compress
+            ) as fileOut:
                 copyfileobj(fileIn, fileOut)
         else:
-            with gzip.open(srcFilePath, 'rb', compress) as fileIn, open(tempDst, 'wb') as fileOut:
+            with gzip.open(srcFilePath, "rb", compress) as fileIn, open(
+                tempDst, "wb"
+            ) as fileOut:
                 copyfileobj(fileIn, fileOut)
     else:
         copyfile(srcFilePath, tempDst)
@@ -1042,7 +1144,7 @@ class CommandLineTokenizer:
         self.argv = []
         self._content = content
         self._pos = 0
-        self._token = ''
+        self._token = ""
         self._parser = self._initialState
 
         while self._pos < len(self._content):
@@ -1059,7 +1161,7 @@ class CommandLineTokenizer:
         if currentChar == '"':
             return self._quotedState
 
-        if currentChar == '\\':
+        if currentChar == "\\":
             self._parseBackslash()
             return self._unquotedState
 
@@ -1069,13 +1171,13 @@ class CommandLineTokenizer:
     def _unquotedState(self, currentChar):
         if currentChar.isspace():
             self.argv.append(self._token)
-            self._token = ''
+            self._token = ""
             return self._initialState
 
         if currentChar == '"':
             return self._quotedState
 
-        if currentChar == '\\':
+        if currentChar == "\\":
             self._parseBackslash()
             return self._unquotedState
 
@@ -1086,7 +1188,7 @@ class CommandLineTokenizer:
         if currentChar == '"':
             return self._unquotedState
 
-        if currentChar == '\\':
+        if currentChar == "\\":
             self._parseBackslash()
             return self._quotedState
 
@@ -1095,19 +1197,21 @@ class CommandLineTokenizer:
 
     def _parseBackslash(self):
         numBackslashes = 0
-        while self._pos < len(self._content) and self._content[self._pos] == '\\':
+        while self._pos < len(self._content) and self._content[self._pos] == "\\":
             self._pos += 1
             numBackslashes += 1
 
-        followedByDoubleQuote = self._pos < len(self._content) and self._content[self._pos] == '"'
+        followedByDoubleQuote = (
+            self._pos < len(self._content) and self._content[self._pos] == '"'
+        )
         if followedByDoubleQuote:
-            self._token += '\\' * (numBackslashes // 2)
+            self._token += "\\" * (numBackslashes // 2)
             if numBackslashes % 2 == 0:
                 self._pos -= 1
             else:
                 self._token += '"'
         else:
-            self._token += '\\' * numBackslashes
+            self._token += "\\" * numBackslashes
             self._pos -= 1
 
 
@@ -1119,24 +1223,24 @@ def expandCommandLine(cmdline):
     ret = []
 
     for arg in cmdline:
-        if arg[0] == '@':
+        if arg[0] == "@":
             includeFile = arg[1:]
-            with open(includeFile, 'rb') as f:
+            with open(includeFile, "rb") as f:
                 rawBytes = f.read()
 
             encoding = None
 
             bomToEncoding = {
-                codecs.BOM_UTF32_BE: 'utf-32-be',
-                codecs.BOM_UTF32_LE: 'utf-32-le',
-                codecs.BOM_UTF16_BE: 'utf-16-be',
-                codecs.BOM_UTF16_LE: 'utf-16-le',
+                codecs.BOM_UTF32_BE: "utf-32-be",
+                codecs.BOM_UTF32_LE: "utf-32-le",
+                codecs.BOM_UTF16_BE: "utf-16-be",
+                codecs.BOM_UTF16_LE: "utf-16-le",
             }
 
             for bom, enc in bomToEncoding.items():
                 if rawBytes.startswith(bom):
                     encoding = enc
-                    rawBytes = rawBytes[len(bom):]
+                    rawBytes = rawBytes[len(bom) :]
                     break
 
             if encoding:
@@ -1144,7 +1248,9 @@ def expandCommandLine(cmdline):
             else:
                 includeFileContents = rawBytes.decode("UTF-8")
 
-            ret.extend(expandCommandLine(splitCommandsFile(includeFileContents.strip())))
+            ret.extend(
+                expandCommandLine(splitCommandsFile(includeFileContents.strip()))
+            )
         else:
             ret.append(arg)
 
@@ -1154,11 +1260,11 @@ def expandCommandLine(cmdline):
 def extendCommandLineFromEnvironment(cmdLine, environment):
     remainingEnvironment = environment.copy()
 
-    prependCmdLineString = remainingEnvironment.pop('CL', None)
+    prependCmdLineString = remainingEnvironment.pop("CL", None)
     if prependCmdLineString is not None:
         cmdLine = splitCommandsFile(prependCmdLineString.strip()) + cmdLine
 
-    appendCmdLineString = remainingEnvironment.pop('_CL_', None)
+    appendCmdLineString = remainingEnvironment.pop("_CL_", None)
     if appendCmdLineString is not None:
         cmdLine = cmdLine + splitCommandsFile(appendCmdLineString.strip())
 
@@ -1206,20 +1312,46 @@ class ArgumentT4(Argument):
 class CommandLineAnalyzer:
     argumentsWithParameter = {
         # /NAMEparameter
-        ArgumentT1('Ob'), ArgumentT1('Yl'), ArgumentT1('Zm'),
+        ArgumentT1("Ob"),
+        ArgumentT1("Yl"),
+        ArgumentT1("Zm"),
         # /NAME[parameter]
-        ArgumentT2('doc'), ArgumentT2('FA'), ArgumentT2('FR'), ArgumentT2('Fr'),
-        ArgumentT2('Gs'), ArgumentT2('MP'), ArgumentT2('Yc'), ArgumentT2('Yu'),
-        ArgumentT2('Zp'), ArgumentT2('Fa'), ArgumentT2('Fd'), ArgumentT2('Fe'),
-        ArgumentT2('Fi'), ArgumentT2('Fm'), ArgumentT2('Fo'), ArgumentT2('Fp'),
-        ArgumentT2('Wv'),
+        ArgumentT2("doc"),
+        ArgumentT2("FA"),
+        ArgumentT2("FR"),
+        ArgumentT2("Fr"),
+        ArgumentT2("Gs"),
+        ArgumentT2("MP"),
+        ArgumentT2("Yc"),
+        ArgumentT2("Yu"),
+        ArgumentT2("Zp"),
+        ArgumentT2("Fa"),
+        ArgumentT2("Fd"),
+        ArgumentT2("Fe"),
+        ArgumentT2("Fi"),
+        ArgumentT2("Fm"),
+        ArgumentT2("Fo"),
+        ArgumentT2("Fp"),
+        ArgumentT2("Wv"),
         # /NAME[ ]parameter
-        ArgumentT3('AI'), ArgumentT3('D'), ArgumentT3('Tc'), ArgumentT3('Tp'),
-        ArgumentT3('FI'), ArgumentT3('U'), ArgumentT3('I'), ArgumentT3('F'),
-        ArgumentT3('FU'), ArgumentT3('w1'), ArgumentT3('w2'), ArgumentT3('w3'),
-        ArgumentT3('w4'), ArgumentT3('wd'), ArgumentT3('we'), ArgumentT3('wo'),
-        ArgumentT3('V'),
-        ArgumentT3('imsvc'),
+        ArgumentT3("AI"),
+        ArgumentT3("D"),
+        ArgumentT3("Tc"),
+        ArgumentT3("Tp"),
+        ArgumentT3("FI"),
+        ArgumentT3("U"),
+        ArgumentT3("I"),
+        ArgumentT3("F"),
+        ArgumentT3("FU"),
+        ArgumentT3("w1"),
+        ArgumentT3("w2"),
+        ArgumentT3("w3"),
+        ArgumentT3("w4"),
+        ArgumentT3("wd"),
+        ArgumentT3("we"),
+        ArgumentT3("wo"),
+        ArgumentT3("V"),
+        ArgumentT3("imsvc"),
         # /NAME parameter
         ArgumentT4("Xclang"),
     }
@@ -1242,17 +1374,19 @@ class CommandLineAnalyzer:
             cmdLineArgument = cmdline[i]
 
             # Plain arguments starting with / or -
-            if cmdLineArgument.startswith('/') or cmdLineArgument.startswith('-'):
+            if cmdLineArgument.startswith("/") or cmdLineArgument.startswith("-"):
                 arg = CommandLineAnalyzer._getParameterizedArgumentType(cmdLineArgument)
                 if arg is not None:
                     if isinstance(arg, ArgumentT1):
-                        value = cmdLineArgument[len(arg) + 1:]
+                        value = cmdLineArgument[len(arg) + 1 :]
                         if not value:
-                            raise InvalidArgumentError("Parameter for {} must not be empty".format(arg))
+                            raise InvalidArgumentError(
+                                "Parameter for {} must not be empty".format(arg)
+                            )
                     elif isinstance(arg, ArgumentT2):
-                        value = cmdLineArgument[len(arg) + 1:]
+                        value = cmdLineArgument[len(arg) + 1 :]
                     elif isinstance(arg, ArgumentT3):
-                        value = cmdLineArgument[len(arg) + 1:]
+                        value = cmdLineArgument[len(arg) + 1 :]
                         if not value:
                             value = cmdline[i + 1]
                             i += 1
@@ -1264,12 +1398,16 @@ class CommandLineAnalyzer:
 
                     arguments[arg.name].append(value)
                 else:
-                    argumentName = cmdLineArgument[1:] # name not followed by parameter in this case
-                    arguments[argumentName].append('')
+                    argumentName = cmdLineArgument[
+                        1:
+                    ]  # name not followed by parameter in this case
+                    arguments[argumentName].append("")
 
             # Response file
-            elif cmdLineArgument[0] == '@':
-                raise AssertionError("No response file arguments (starting with @) must be left here.")
+            elif cmdLineArgument[0] == "@":
+                raise AssertionError(
+                    "No response file arguments (starting with @) must be left here."
+                )
 
             # Source file arguments
             else:
@@ -1284,13 +1422,13 @@ class CommandLineAnalyzer:
         options, inputFiles = CommandLineAnalyzer.parseArgumentsAndInputFiles(cmdline)
         # Use an override pattern to shadow input files that have
         # already been specified in the function above
-        inputFiles = {inputFile: '' for inputFile in inputFiles}
+        inputFiles = {inputFile: "" for inputFile in inputFiles}
         compl = False
-        if 'Tp' in options:
-            inputFiles.update({inputFile: '/Tp' for inputFile in options['Tp']})
+        if "Tp" in options:
+            inputFiles.update({inputFile: "/Tp" for inputFile in options["Tp"]})
             compl = True
-        if 'Tc' in options:
-            inputFiles.update({inputFile: '/Tc' for inputFile in options['Tc']})
+        if "Tc" in options:
+            inputFiles.update({inputFile: "/Tc" for inputFile in options["Tc"]})
             compl = True
 
         # Now collect the inputFiles into the return format
@@ -1298,43 +1436,48 @@ class CommandLineAnalyzer:
         if not inputFiles:
             raise NoSourceFileError()
 
-        for opt in ['E', 'EP', 'P']:
+        for opt in ["E", "EP", "P"]:
             if opt in options:
                 raise CalledForPreprocessingError()
 
         # Technically, it would be possible to support /Zi: we'd just need to
         # copy the generated .pdb files into/out of the cache.
-        if 'Zi' in options:
+        if "Zi" in options:
             raise ExternalDebugInfoError()
 
-        if 'Yc' in options or 'Yu' in options:
+        if "Yc" in options or "Yu" in options:
             raise CalledWithPchError()
 
-        if 'link' in options or 'c' not in options:
+        if "link" in options or "c" not in options:
             raise CalledForLinkError()
 
         if len(inputFiles) > 1 and compl:
             raise MultipleSourceFilesComplexError()
 
         objectFiles = None
-        prefix = ''
-        if 'Fo' in options and options['Fo'][0]:
+        prefix = ""
+        if "Fo" in options and options["Fo"][0]:
             # Handle user input
-            tmp = os.path.normpath(options['Fo'][0])
+            tmp = os.path.normpath(options["Fo"][0])
             if os.path.isdir(tmp):
                 prefix = tmp
             elif len(inputFiles) == 1:
                 objectFiles = [tmp]
         if objectFiles is None:
             # Generate from .c/.cpp filenames
-            objectFiles = [os.path.join(prefix, basenameWithoutExtension(f)) + '.obj' for f, _ in inputFiles]
+            objectFiles = [
+                os.path.join(prefix, basenameWithoutExtension(f)) + ".obj"
+                for f, _ in inputFiles
+            ]
 
         printTraceStatement("Compiler source files: {}".format(inputFiles))
         printTraceStatement("Compiler object file: {}".format(objectFiles))
         return inputFiles, objectFiles
 
 
-def invokeRealCompiler(compilerBinary, cmdLine, captureOutput=False, outputAsString=True, environment=None):
+def invokeRealCompiler(
+    compilerBinary, cmdLine, captureOutput=False, outputAsString=True, environment=None
+):
     realCmdline = [compilerBinary] + cmdLine
     printTraceStatement("Invoking real compiler as {}".format(realCmdline))
 
@@ -1346,13 +1489,15 @@ def invokeRealCompiler(compilerBinary, cmdLine, captureOutput=False, outputAsStr
     environment.pop("VS_UNICODE_OUTPUT", None)
 
     returnCode = None
-    stdout = b''
-    stderr = b''
+    stdout = b""
+    stderr = b""
     if captureOutput:
         # Don't use subprocess.communicate() here, it's slow due to internal
         # threading.
         with TemporaryFile() as stdoutFile, TemporaryFile() as stderrFile:
-            compilerProcess = subprocess.Popen(realCmdline, stdout=stdoutFile, stderr=stderrFile, env=environment)
+            compilerProcess = subprocess.Popen(
+                realCmdline, stdout=stdoutFile, stderr=stderrFile, env=environment
+            )
             returnCode = compilerProcess.wait()
             stdoutFile.seek(0)
             stdout = stdoutFile.read()
@@ -1370,10 +1515,11 @@ def invokeRealCompiler(compilerBinary, cmdLine, captureOutput=False, outputAsStr
 
     return returnCode, stdout, stderr
 
+
 # Returns the amount of jobs which should be run in parallel when
 # invoked in batch mode as determined by the /MP argument
 def jobCount(cmdLine):
-    mpSwitches = [arg for arg in cmdLine if re.match(r'^/MP(\d+)?$', arg)]
+    mpSwitches = [arg for arg in cmdLine if re.match(r"^/MP(\d+)?$", arg)]
     if not mpSwitches:
         return 1
 
@@ -1390,6 +1536,7 @@ def jobCount(cmdLine):
     except NotImplementedError:
         # not expected to happen
         return 2
+
 
 def printStatistics(cache):
     template = """
@@ -1414,24 +1561,26 @@ clcache statistics:
     called w/ PCH              : {}""".strip()
 
     with cache.statistics.lock, cache.statistics as stats, cache.configuration as cfg:
-        print(template.format(
-            str(cache),
-            stats.currentCacheSize(),
-            cfg.maximumCacheSize(),
-            stats.numCacheEntries(),
-            stats.numCacheHits(),
-            stats.numCacheMisses(),
-            stats.numEvictedMisses(),
-            stats.numHeaderChangedMisses(),
-            stats.numSourceChangedMisses(),
-            stats.numCallsWithInvalidArgument(),
-            stats.numCallsForPreprocessing(),
-            stats.numCallsForLinking(),
-            stats.numCallsForExternalDebugInfo(),
-            stats.numCallsWithoutSourceFile(),
-            stats.numCallsWithMultipleSourceFiles(),
-            stats.numCallsWithPch(),
-        ))
+        print(
+            template.format(
+                str(cache),
+                stats.currentCacheSize(),
+                cfg.maximumCacheSize(),
+                stats.numCacheEntries(),
+                stats.numCacheHits(),
+                stats.numCacheMisses(),
+                stats.numEvictedMisses(),
+                stats.numHeaderChangedMisses(),
+                stats.numSourceChangedMisses(),
+                stats.numCallsWithInvalidArgument(),
+                stats.numCallsForPreprocessing(),
+                stats.numCallsForLinking(),
+                stats.numCallsForExternalDebugInfo(),
+                stats.numCallsWithoutSourceFile(),
+                stats.numCallsWithMultipleSourceFiles(),
+                stats.numCallsWithPch(),
+            )
+        )
 
 
 def resetStatistics(cache):
@@ -1470,20 +1619,20 @@ def parseIncludesSet(compilerOutput, sourceFile, strip):
     # - colon
     # - one or more spaces
     # - the file path, starting with a non-whitespace character
-    reFilePath = re.compile(r'^(\w+): ([ \w]+):( +)(?P<file_path>\S.*)$')
+    reFilePath = re.compile(r"^(\w+): ([ \w]+):( +)(?P<file_path>\S.*)$")
 
     absSourceFile = os.path.normcase(os.path.abspath(sourceFile))
     for line in compilerOutput.splitlines(True):
-        match = reFilePath.match(line.rstrip('\r\n'))
+        match = reFilePath.match(line.rstrip("\r\n"))
         if match is not None:
-            filePath = match.group('file_path')
+            filePath = match.group("file_path")
             filePath = os.path.normcase(os.path.abspath(filePath))
             if filePath != absSourceFile:
                 includesSet.add(filePath)
         elif strip:
             newOutput.append(line)
     if strip:
-        return includesSet, ''.join(newOutput)
+        return includesSet, "".join(newOutput)
     else:
         return includesSet, compilerOutput
 
@@ -1491,7 +1640,11 @@ def parseIncludesSet(compilerOutput, sourceFile, strip):
 def addObjectToCache(stats, cache, cachekey, artifacts):
     # This function asserts that the caller locked 'section' and 'stats'
     # already and also saves them
-    printTraceStatement("Adding file {} to cache using key {}".format(artifacts.objectFilePath, cachekey))
+    printTraceStatement(
+        "Adding file {} to cache using key {}".format(
+            artifacts.objectFilePath, cachekey
+        )
+    )
 
     size = cache.setEntry(cachekey, artifacts)
     if size is None:
@@ -1503,7 +1656,11 @@ def addObjectToCache(stats, cache, cachekey, artifacts):
 
 
 def processCacheHit(cache, objectFile, cachekey):
-    printTraceStatement("Reusing cached object for key {} for object file {}".format(cachekey, objectFile))
+    printTraceStatement(
+        "Reusing cached object for key {} for object file {}".format(
+            cachekey, objectFile
+        )
+    )
 
     with cache.lockFor(cachekey):
         with cache.statistics.lock, cache.statistics as stats:
@@ -1523,8 +1680,12 @@ def createManifestEntry(manifestHash, includePaths):
     includeHashes = getFileHashes(sortedIncludePaths)
 
     safeIncludes = [collapseBasedirToPlaceholder(path) for path in sortedIncludePaths]
-    includesContentHash = ManifestRepository.getIncludesContentHashForHashes(includeHashes)
-    cachekey = CompilerArtifactsRepository.computeKeyDirect(manifestHash, includesContentHash)
+    includesContentHash = ManifestRepository.getIncludesContentHashForHashes(
+        includeHashes
+    )
+    cachekey = CompilerArtifactsRepository.computeKeyDirect(
+        manifestHash, includesContentHash
+    )
 
     return ManifestEntry(safeIncludes, includesContentHash, cachekey)
 
@@ -1553,29 +1714,51 @@ def main():
     parser = argparse.ArgumentParser(description="clcache.py v" + VERSION)
     # Handle the clcache standalone actions, only one can be used at a time
     groupParser = parser.add_mutually_exclusive_group()
-    groupParser.add_argument("-s", "--stats", dest="show_stats",
-                             action="store_true",
-                             help="print cache statistics")
-    groupParser.add_argument("-c", "--clean", dest="clean_cache",
-                             action="store_true", help="clean cache")
-    groupParser.add_argument("-C", "--clear", dest="clear_cache",
-                             action="store_true", help="clear cache")
-    groupParser.add_argument("-z", "--reset", dest="reset_stats",
-                             action="store_true",
-                             help="reset cache statistics")
-    groupParser.add_argument("-M", "--set-size", dest="cache_size", type=int,
-                             default=None,
-                             help="set maximum cache size (in bytes)")
+    groupParser.add_argument(
+        "-s",
+        "--stats",
+        dest="show_stats",
+        action="store_true",
+        help="print cache statistics",
+    )
+    groupParser.add_argument(
+        "-c", "--clean", dest="clean_cache", action="store_true", help="clean cache"
+    )
+    groupParser.add_argument(
+        "-C", "--clear", dest="clear_cache", action="store_true", help="clear cache"
+    )
+    groupParser.add_argument(
+        "-z",
+        "--reset",
+        dest="reset_stats",
+        action="store_true",
+        help="reset cache statistics",
+    )
+    groupParser.add_argument(
+        "-M",
+        "--set-size",
+        dest="cache_size",
+        type=int,
+        default=None,
+        help="set maximum cache size (in bytes)",
+    )
 
     # This argument need to be optional, or it will be required for the status commands above
-    parser.add_argument("compiler", default=None, action=CommandCheckAction,
-                        nargs="?",
-                        help="Optional path to compile executable. If not "
-                             "present look in CLCACHE_CL environment variable "
-                             "or search PATH for cl.exe.")
-    parser.add_argument("compiler_args", action=RemainderSetAction,
-                        nargs=argparse.REMAINDER,
-                        help="Arguments to the compiler")
+    parser.add_argument(
+        "compiler",
+        default=None,
+        action=CommandCheckAction,
+        nargs="?",
+        help="Optional path to compile executable. If not "
+        "present look in CLCACHE_CL environment variable "
+        "or search PATH for cl.exe.",
+    )
+    parser.add_argument(
+        "compiler_args",
+        action=RemainderSetAction,
+        nargs=argparse.REMAINDER,
+        help="Arguments to the compiler",
+    )
 
     options = parser.parse_args()
 
@@ -1587,17 +1770,17 @@ def main():
 
     if options.clean_cache:
         cleanCache(cache)
-        print('Cache cleaned')
+        print("Cache cleaned")
         return 0
 
     if options.clear_cache:
         clearCache(cache)
-        print('Cache cleared')
+        print("Cache cleared")
         return 0
 
     if options.reset_stats:
         resetStatistics(cache)
-        print('Statistics reset')
+        print("Statistics reset")
         return 0
 
     if options.cache_size is not None:
@@ -1610,10 +1793,11 @@ def main():
             cfg.setMaximumCacheSize(maxSizeValue)
         return 0
 
-
     compiler = options.compiler or findCompilerBinary()
     if not (compiler and os.access(compiler, os.F_OK)):
-        print("Failed to locate specified compiler, or cl.exe on PATH (and CLCACHE_CL is not set), aborting.")
+        print(
+            "Failed to locate specified compiler, or cl.exe on PATH (and CLCACHE_CL is not set), aborting."
+        )
         return 1
 
     printTraceStatement("Found real compiler binary at '{0!s}'".format(compiler))
@@ -1632,13 +1816,16 @@ def updateCacheStatistics(cache, method):
     with cache.statistics.lock, cache.statistics as stats:
         method(stats)
 
+
 def printOutAndErr(out, err):
     printBinary(sys.stdout, out.encode(CL_DEFAULT_CODEC))
     printBinary(sys.stderr, err.encode(CL_DEFAULT_CODEC))
 
+
 def printErrStr(message):
     with OUTPUT_LOCK:
         print(message, file=sys.stderr)
+
 
 def processCompileRequest(cache, compiler, args):
     printTraceStatement("Parsing given commandline '{0!s}'".format(args))
@@ -1649,57 +1836,97 @@ def processCompileRequest(cache, compiler, args):
 
     try:
         sourceFiles, objectFiles = CommandLineAnalyzer.analyze(cmdLine)
-        return scheduleJobs(cache, compiler, cmdLine, environment, sourceFiles, objectFiles)
+        return scheduleJobs(
+            cache, compiler, cmdLine, environment, sourceFiles, objectFiles
+        )
     except InvalidArgumentError:
-        printTraceStatement("Cannot cache invocation as {}: invalid argument".format(cmdLine))
+        printTraceStatement(
+            "Cannot cache invocation as {}: invalid argument".format(cmdLine)
+        )
         updateCacheStatistics(cache, Statistics.registerCallWithInvalidArgument)
     except NoSourceFileError:
-        printTraceStatement("Cannot cache invocation as {}: no source file found".format(cmdLine))
+        printTraceStatement(
+            "Cannot cache invocation as {}: no source file found".format(cmdLine)
+        )
         updateCacheStatistics(cache, Statistics.registerCallWithoutSourceFile)
     except MultipleSourceFilesComplexError:
-        printTraceStatement("Cannot cache invocation as {}: multiple source files found".format(cmdLine))
+        printTraceStatement(
+            "Cannot cache invocation as {}: multiple source files found".format(cmdLine)
+        )
         updateCacheStatistics(cache, Statistics.registerCallWithMultipleSourceFiles)
     except CalledWithPchError:
-        printTraceStatement("Cannot cache invocation as {}: precompiled headers in use".format(cmdLine))
+        printTraceStatement(
+            "Cannot cache invocation as {}: precompiled headers in use".format(cmdLine)
+        )
         updateCacheStatistics(cache, Statistics.registerCallWithPch)
     except CalledForLinkError:
-        printTraceStatement("Cannot cache invocation as {}: called for linking".format(cmdLine))
+        printTraceStatement(
+            "Cannot cache invocation as {}: called for linking".format(cmdLine)
+        )
         updateCacheStatistics(cache, Statistics.registerCallForLinking)
     except ExternalDebugInfoError:
         printTraceStatement(
-            "Cannot cache invocation as {}: external debug information (/Zi) is not supported".format(cmdLine)
+            "Cannot cache invocation as {}: external debug information (/Zi) is not supported".format(
+                cmdLine
+            )
         )
         updateCacheStatistics(cache, Statistics.registerCallForExternalDebugInfo)
     except CalledForPreprocessingError:
-        printTraceStatement("Cannot cache invocation as {}: called for preprocessing".format(cmdLine))
+        printTraceStatement(
+            "Cannot cache invocation as {}: called for preprocessing".format(cmdLine)
+        )
         updateCacheStatistics(cache, Statistics.registerCallForPreprocessing)
 
     exitCode, out, err = invokeRealCompiler(compiler, args)
     printOutAndErr(out, err)
     return exitCode
 
-def filterSourceFiles(cmdLine: List[str], sourceFiles: List[Tuple[str, str]]) -> Iterator[str]:
+
+def filterSourceFiles(
+    cmdLine: List[str], sourceFiles: List[Tuple[str, str]]
+) -> Iterator[str]:
     setOfSources = set(sourceFile for sourceFile, _ in sourceFiles)
-    skippedArgs = ('/Tc', '/Tp', '-Tp', '-Tc')
+    skippedArgs = ("/Tc", "/Tp", "-Tp", "-Tc")
     yield from (
-        arg for arg in cmdLine
+        arg
+        for arg in cmdLine
         if not (arg in setOfSources or arg.startswith(skippedArgs))
     )
 
-def scheduleJobs(cache: Any, compiler: str, cmdLine: List[str], environment: Any,
-                 sourceFiles: List[Tuple[str, str]], objectFiles: List[str]) -> int:
+
+def scheduleJobs(
+    cache: Any,
+    compiler: str,
+    cmdLine: List[str],
+    environment: Any,
+    sourceFiles: List[Tuple[str, str]],
+    objectFiles: List[str],
+) -> int:
     # Filter out all source files from the command line to form baseCmdLine
-    baseCmdLine = [arg for arg in filterSourceFiles(cmdLine, sourceFiles) if not arg.startswith('/MP')]
+    baseCmdLine = [
+        arg
+        for arg in filterSourceFiles(cmdLine, sourceFiles)
+        if not arg.startswith("/MP")
+    ]
 
     exitCode = 0
     cleanupRequired = False
-    with concurrent.futures.ThreadPoolExecutor(max_workers=jobCount(cmdLine)) as executor:
+    with concurrent.futures.ThreadPoolExecutor(
+        max_workers=jobCount(cmdLine)
+    ) as executor:
         jobs = []
         for (srcFile, srcLanguage), objFile in zip(sourceFiles, objectFiles):
             jobCmdLine = baseCmdLine + [srcLanguage + srcFile]
-            jobs.append(executor.submit(
-                processSingleSource,
-                compiler, jobCmdLine, srcFile, objFile, environment))
+            jobs.append(
+                executor.submit(
+                    processSingleSource,
+                    compiler,
+                    jobCmdLine,
+                    srcFile,
+                    objFile,
+                    environment,
+                )
+            )
         for future in concurrent.futures.as_completed(jobs):
             exitCode, out, err, doCleanup = future.result()
             printTraceStatement("Finished. Exit code {0:d}".format(exitCode))
@@ -1714,12 +1941,13 @@ def scheduleJobs(cache: Any, compiler: str, cmdLine: List[str], environment: Any
 
     return exitCode
 
+
 def processSingleSource(compiler, cmdLine, sourceFile, objectFile, environment):
     try:
         assert objectFile is not None
         cache = Cache()
 
-        if 'CLCACHE_NODIRECT' in os.environ:
+        if "CLCACHE_NODIRECT" in os.environ:
             return processNoDirect(cache, objectFile, compiler, cmdLine, environment)
         else:
             return processDirect(cache, objectFile, compiler, cmdLine, sourceFile)
@@ -1728,6 +1956,7 @@ def processSingleSource(compiler, cmdLine, sourceFile, objectFile, environment):
         return invokeRealCompiler(compiler, cmdLine, environment=environment), False
     except CompilerFailedException as e:
         return e.getReturnTuple()
+
 
 def processDirect(cache, objectFile, compiler, cmdLine, sourceFile):
     manifestHash = ManifestRepository.getManifestHash(compiler, cmdLine, sourceFile)
@@ -1738,8 +1967,14 @@ def processDirect(cache, objectFile, compiler, cmdLine, sourceFile):
             for entryIndex, entry in enumerate(manifest.entries()):
                 # NOTE: command line options already included in hash for manifest name
                 try:
-                    includesContentHash = ManifestRepository.getIncludesContentHashForFiles(
-                        [expandBasedirPlaceholder(path) for path in entry.includeFiles])
+                    includesContentHash = (
+                        ManifestRepository.getIncludesContentHashForFiles(
+                            [
+                                expandBasedirPlaceholder(path)
+                                for path in entry.includeFiles
+                            ]
+                        )
+                    )
 
                     if entry.includesContentHash == includesContentHash:
                         cachekey = entry.objectHash
@@ -1763,19 +1998,22 @@ def processDirect(cache, objectFile, compiler, cmdLine, sourceFile):
 
     if manifestHit is None:
         stripIncludes = False
-        if '/showIncludes' not in cmdLine:
+        if "/showIncludes" not in cmdLine:
             cmdLine = list(cmdLine)
-            cmdLine.insert(0, '/showIncludes')
+            cmdLine.insert(0, "/showIncludes")
             stripIncludes = True
     compilerResult = invokeRealCompiler(compiler, cmdLine, captureOutput=True)
     if manifestHit is None:
-        includePaths, compilerOutput = parseIncludesSet(compilerResult[1], sourceFile, stripIncludes)
+        includePaths, compilerOutput = parseIncludesSet(
+            compilerResult[1], sourceFile, stripIncludes
+        )
         compilerResult = (compilerResult[0], compilerOutput, compilerResult[2])
 
     with cache.manifestLockFor(manifestHash):
         if manifestHit is not None:
-            return ensureArtifactsExist(cache, cachekey, unusableManifestMissReason,
-                                        objectFile, compilerResult)
+            return ensureArtifactsExist(
+                cache, cachekey, unusableManifestMissReason, objectFile, compilerResult
+            )
 
         entry = createManifestEntry(manifestHash, includePaths)
         cachekey = entry.objectHash
@@ -1785,41 +2023,58 @@ def processDirect(cache, objectFile, compiler, cmdLine, sourceFile):
             manifest.addEntry(entry)
             cache.setManifest(manifestHash, manifest)
 
-        return ensureArtifactsExist(cache, cachekey, unusableManifestMissReason,
-                                    objectFile, compilerResult, addManifest)
+        return ensureArtifactsExist(
+            cache,
+            cachekey,
+            unusableManifestMissReason,
+            objectFile,
+            compilerResult,
+            addManifest,
+        )
 
 
 def processNoDirect(cache, objectFile, compiler, cmdLine, environment):
-    cachekey = CompilerArtifactsRepository.computeKeyNodirect(compiler, cmdLine, environment)
+    cachekey = CompilerArtifactsRepository.computeKeyNodirect(
+        compiler, cmdLine, environment
+    )
     with cache.lockFor(cachekey):
         if cache.hasEntry(cachekey):
             return processCacheHit(cache, objectFile, cachekey)
 
-    compilerResult = invokeRealCompiler(compiler, cmdLine, captureOutput=True, environment=environment)
+    compilerResult = invokeRealCompiler(
+        compiler, cmdLine, captureOutput=True, environment=environment
+    )
 
-    return ensureArtifactsExist(cache, cachekey, Statistics.registerCacheMiss,
-                                objectFile, compilerResult)
+    return ensureArtifactsExist(
+        cache, cachekey, Statistics.registerCacheMiss, objectFile, compilerResult
+    )
 
 
-def ensureArtifactsExist(cache, cachekey, reason, objectFile, compilerResult, extraCallable=None):
+def ensureArtifactsExist(
+    cache, cachekey, reason, objectFile, compilerResult, extraCallable=None
+):
     cleanupRequired = False
     returnCode, compilerOutput, compilerStderr = compilerResult
-    correctCompiliation = (returnCode == 0 and os.path.exists(objectFile))
+    correctCompiliation = returnCode == 0 and os.path.exists(objectFile)
     with cache.lockFor(cachekey):
         if not cache.hasEntry(cachekey):
             with cache.statistics.lock, cache.statistics as stats:
                 reason(stats)
                 if correctCompiliation:
-                    artifacts = CompilerArtifacts(objectFile, compilerOutput, compilerStderr)
-                    cleanupRequired = addObjectToCache(stats, cache, cachekey, artifacts)
+                    artifacts = CompilerArtifacts(
+                        objectFile, compilerOutput, compilerStderr
+                    )
+                    cleanupRequired = addObjectToCache(
+                        stats, cache, cachekey, artifacts
+                    )
             if extraCallable and correctCompiliation:
                 extraCallable()
     return returnCode, compilerOutput, compilerStderr, cleanupRequired
 
 
-if __name__ == '__main__':
-    if 'CLCACHE_PROFILE' in os.environ:
-        INVOCATION_HASH = getStringHash(','.join(sys.argv))
-        cProfile.run('main()', filename='clcache-{}.prof'.format(INVOCATION_HASH))
+if __name__ == "__main__":
+    if "CLCACHE_PROFILE" in os.environ:
+        INVOCATION_HASH = getStringHash(",".join(sys.argv))
+        cProfile.run("main()", filename="clcache-{}.prof".format(INVOCATION_HASH))
     else:
         sys.exit(main())
