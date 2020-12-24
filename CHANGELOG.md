@@ -3,13 +3,14 @@ clcache changelog
 
 ## Upcoming release
 
+ * Project: Moved maintenance to Nuitka organisation.
  * Feature: Allow compressing cache content via new `CLCACHE_COMPRESS` and
    `CLCACHE_COMPRESSLEVEL` environment variables. (GH #328)
  * Bugfix: Fixed a race condition resulting in clcache to fail with an error
    message like `PermissionError: [WinError 5] Access is denied:
    'XXXX\\stats.txt.new' -> 'XXXX\\stats.txt'` (GH #334)
  * The path to the compiler executable can optionally be specified on the
-   command line, instead of with an environment variable, or searching the PATH. 
+   command line, instead of with an environment variable, or searching the PATH.
  * Added support for clang-cl
 
 ## clcache 4.2.0 (2018-09-06)
@@ -82,7 +83,7 @@ clcache changelog
 ## clcache 3.3.0 (2016-09-07)
 
  * Bugfix: /MP no longer causes a greatly reduced cache hit rate.
- * Bugfix: In direct mode, clcache will no longer try to access non-existant
+ * Bugfix: In direct mode, clcache will no longer try to access non-existent
    header files (GH #200, GH #209).
  * Bugfix: Correctly cache and restore stdout/stderr output of compiler when
    building via the Visual Studio IDE.
