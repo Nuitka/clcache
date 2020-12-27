@@ -1692,7 +1692,13 @@ def runClCache(compiler, compiler_args):
     """ Entry point, designed to be used by external tools like Nuitka's scons. """
     cache = Cache()
 
-    return run(cache, compiler, compiler_args)
+    exit_code, out, err = run(cache, compiler, compiler_args)
+
+    assert len(out) == 1 == len(err)
+
+    # Preferred order in Nuitka scons is output, error, exit_code and we expect
+    # bytes.
+    return out[0].encode(CL_DEFAULT_CODEC), err[0].encode(CL_DEFAULT_CODEC), exit_code
 
 
 def updateCacheStatistics(cache, method):
@@ -1701,9 +1707,9 @@ def updateCacheStatistics(cache, method):
 
 
 def printOutAndErr(out, err):
-    printBinary(sys.stdout, out.encode(CL_DEFAULT_CODEC))
-    printBinary(sys.stderr, err.encode(CL_DEFAULT_CODEC))
-
+    if "CLCACHE_HIDE_OUTPUTS" not in os.environ:
+        printBinary(sys.stdout, out.encode(CL_DEFAULT_CODEC))
+        printBinary(sys.stderrsrr.encode(CL_DEFAULT_CODEC))
 
 def printErrStr(message):
     with OUTPUT_LOCK:
@@ -1762,7 +1768,7 @@ def processCompileRequest(cache, compiler, args):
 
     exitCode, out, err = invokeRealCompiler(compiler, args)
     printOutAndErr(out, err)
-    return exitCode
+    return exitCode, [out], [err]
 
 
 def filterSourceFiles(
@@ -1785,6 +1791,9 @@ def scheduleJobs(
     sourceFiles: List[Tuple[str, str]],
     objectFiles: List[str],
 ) -> int:
+    result_out = []
+    result_err = []
+
     # Filter out all source files from the command line to form baseCmdLine
     baseCmdLine = [
         arg
@@ -1816,13 +1825,16 @@ def scheduleJobs(
             cleanupRequired |= doCleanup
             printOutAndErr(out, err)
 
+            result_out.append(out)
+            result_err.append(err)
+
             if exitCode != 0:
                 break
 
     if cleanupRequired:
         cleanCache(cache)
 
-    return exitCode
+    return exitCode, result_out, result_err
 
 
 def processSingleSource(compiler, cmdLine, sourceFile, objectFile, environment):

@@ -135,8 +135,9 @@ def main():
 
     printTraceStatement("Arguments we care about: '{}'".format(sys.argv))
 
-    return run(cache, compiler, options.compiler_args)
+    exit_code, _stdout, _stderr = run(cache, compiler, options.compiler_args)
 
+    return exit_code
 
 if __name__ == "__main__":
     if "CLCACHE_PROFILE" in os.environ:
