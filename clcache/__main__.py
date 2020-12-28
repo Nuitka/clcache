@@ -10,15 +10,37 @@
 import argparse
 import os
 import sys
+from shutil import which
 
 from clcache.caching import (
     VERSION,
     Cache,
-    findCompilerBinary,
     getStringHash,
     printTraceStatement,
     run,
 )
+
+
+def findCompilerBinary():
+    if "CLCACHE_CL" in os.environ:
+        path = os.environ["CLCACHE_CL"]
+        if os.path.basename(path) == path:
+            path = which(path)
+
+        return path if os.path.exists(path) else None
+
+    frozenByPy2Exe = hasattr(sys, "frozen")
+
+    for p in os.environ["PATH"].split(os.pathsep):
+        path = os.path.join(p, "cl.exe")
+        if os.path.exists(path):
+            if not frozenByPy2Exe:
+                return path
+
+            # Guard against recursively calling ourselves
+            if path.upper() != myExecutablePath():
+                return path
+    return None
 
 
 def main():
@@ -138,6 +160,7 @@ def main():
     exit_code, _stdout, _stderr = run(cache, compiler, options.compiler_args)
 
     return exit_code
+
 
 if __name__ == "__main__":
     if "CLCACHE_PROFILE" in os.environ:

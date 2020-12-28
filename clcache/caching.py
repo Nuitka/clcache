@@ -20,7 +20,7 @@ import sys
 import threading
 from collections import defaultdict, namedtuple
 from ctypes import windll, wintypes
-from shutil import copyfile, copyfileobj, rmtree, which
+from shutil import copyfile, copyfileobj, rmtree
 from tempfile import TemporaryFile
 from typing import Any, Iterator, List, Tuple
 
@@ -1099,28 +1099,6 @@ def myExecutablePath():
     return sys.executable.upper()
 
 
-def findCompilerBinary():
-    if "CLCACHE_CL" in os.environ:
-        path = os.environ["CLCACHE_CL"]
-        if os.path.basename(path) == path:
-            path = which(path)
-
-        return path if os.path.exists(path) else None
-
-    frozenByPy2Exe = hasattr(sys, "frozen")
-
-    for p in os.environ["PATH"].split(os.pathsep):
-        path = os.path.join(p, "cl.exe")
-        if os.path.exists(path):
-            if not frozenByPy2Exe:
-                return path
-
-            # Guard against recursively calling ourselves
-            if path.upper() != myExecutablePath():
-                return path
-    return None
-
-
 def printTraceStatement(msg: str) -> None:
     if "CLCACHE_LOG" in os.environ:
         scriptDir = os.path.realpath(os.path.dirname(sys.argv[0]))
@@ -1710,6 +1688,7 @@ def printOutAndErr(out, err):
     if "CLCACHE_HIDE_OUTPUTS" not in os.environ:
         printBinary(sys.stdout, out.encode(CL_DEFAULT_CODEC))
         printBinary(sys.stderrsrr.encode(CL_DEFAULT_CODEC))
+
 
 def printErrStr(message):
     with OUTPUT_LOCK:
