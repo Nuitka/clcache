@@ -1776,7 +1776,7 @@ def filterSourceFiles(
 ) -> Iterator[str]:
     setOfSources = set(sourceFile for sourceFile, _ in sourceFiles)
     skippedArgs = ("/Tc", "/Tp", "-Tp", "-Tc")
-    yield from (
+    return (
         arg
         for arg in cmdLine
         if not (arg in setOfSources or arg.startswith(skippedArgs))
