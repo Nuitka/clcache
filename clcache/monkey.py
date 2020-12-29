@@ -1,8 +1,10 @@
+""" Clcache integration with distutils.
+
+"""
+
 import os
-import shutil
 import sys
 from contextlib import suppress
-from os.path import dirname, isfile, join
 from typing import List
 
 

@@ -1,3 +1,5 @@
+""" Clcache module with core caching functionality. """
+
 # This file is part of the clcache project.
 #
 # The contents of this file are subject to the BSD 3-Clause License, the
@@ -36,14 +38,14 @@ OUTPUT_LOCK = threading.Lock()
 # fall back to os.listdir if not found
 # same for scandir.walk
 try:
-    import scandir  # pylint: disable=wrong-import-position
+    import scandir
 
     WALK = scandir.walk
     LIST = scandir.scandir
 except ImportError:
     WALK = os.walk
     try:
-        LIST = os.scandir  # type: ignore # pylint: disable=no-name-in-module
+        LIST = os.scandir  # type: ignore # pylint: disable=I0021,no-name-in-module
     except AttributeError:
         LIST = os.listdir
 
@@ -145,7 +147,7 @@ class CacheLockException(Exception):
 
 class CompilerFailedException(Exception):
     def __init__(self, exitCode, msgErr, msgOut=""):
-        super(CompilerFailedException, self).__init__(msgErr)
+        Exception.__init__(msgErr)
         self.exitCode = exitCode
         self.msgOut = msgOut
         self.msgErr = msgErr
@@ -1098,11 +1100,6 @@ def copyOrLink(srcFilePath, dstFilePath, writeCache=False):
     os.replace(tempDst, dstFilePath)
 
 
-def myExecutablePath():
-    assert hasattr(sys, "frozen"), "is not frozen by py2exe"
-    return sys.executable.upper()
-
-
 def printTraceStatement(msg: str) -> None:
     if "CLCACHE_LOG" in os.environ:
         scriptDir = os.path.realpath(os.path.dirname(sys.argv[0]))
@@ -1691,7 +1688,7 @@ def updateCacheStatistics(cache, method):
 def printOutAndErr(out, err):
     if "CLCACHE_HIDE_OUTPUTS" not in os.environ:
         printBinary(sys.stdout, out.encode(CL_DEFAULT_CODEC))
-        printBinary(sys.stderrsrr.encode(CL_DEFAULT_CODEC))
+        printBinary(sys.stderr, err.encode(CL_DEFAULT_CODEC))
 
 
 def printErrStr(message):

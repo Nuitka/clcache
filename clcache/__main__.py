@@ -7,6 +7,8 @@
 # root directory of this project.
 #
 
+""" Main program of clcache. """
+
 import argparse
 import os
 import sys
@@ -15,10 +17,19 @@ from shutil import which
 from clcache.caching import (
     VERSION,
     Cache,
+    cleanCache,
+    clearCache,
     getStringHash,
+    printStatistics,
     printTraceStatement,
+    resetStatistics,
     run,
 )
+
+
+def myExecutablePath():
+    assert hasattr(sys, "frozen"), "is not frozen by py2exe"
+    return sys.executable.upper()
 
 
 def findCompilerBinary():

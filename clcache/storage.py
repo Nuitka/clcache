@@ -1,12 +1,14 @@
+""" Clcache storage """
+
 import contextlib
 
-from pymemcache.client.base import Client
-from pymemcache.serde import (
+from pymemcache.client.base import Client  # pylint: disable=I0021,import-error
+from pymemcache.serde import (  # pylint: disable=I0021,import-error
     python_memcache_deserializer,
     python_memcache_serializer,
 )
 
-from .__main__ import (
+from .caching import (
     CACHE_COMPILER_OUTPUT_STORAGE_CODEC,
     CacheFileStrategy,
     CompilerArtifacts,
@@ -49,7 +51,9 @@ class CacheMemcacheStrategy:
             clientClass = Client
             server = server[0]
         else:
-            from pymemcache.client.hash import HashClient
+            from pymemcache.client.hash import (
+                HashClient,
+            )  # pylint: disable=I0021,import-error
 
             clientClass = HashClient
         self.client = clientClass(

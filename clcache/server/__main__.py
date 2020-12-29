@@ -1,3 +1,5 @@
+""" Clcache server main program. """
+
 # We often don't use all members of all the pyuv callbacks
 # pylint: disable=unused-argument
 import argparse
@@ -8,7 +10,7 @@ import pickle
 import re
 import signal
 
-import pyuv
+import pyuv  # pylint: disable=I0021,import-error
 
 
 class HashCache:
