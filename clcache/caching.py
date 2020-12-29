@@ -584,7 +584,11 @@ class CacheFileStrategy:
         )
 
         self.configuration = Configuration(os.path.join(self.dir, "config.txt"))
-        self.statistics = Statistics(os.path.join(self.dir, "stats.txt"))
+
+        stats_filename = os.environ.get(
+            "CLCACHE_STATS", os.path.join(self.dir, "stats.txt")
+        )
+        self.statistics = Statistics(stats_filename)
 
     def __str__(self):
         return "Disk cache at {}".format(self.dir)
