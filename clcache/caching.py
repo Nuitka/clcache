@@ -1667,9 +1667,15 @@ def run(cache, compiler, compiler_args):
         return processCompileRequest(cache, compiler, compiler_args)
 
 
+cache = None
+
+
 def runClCache(compiler, compiler_args):
     """ Entry point, designed to be used by external tools like Nuitka's scons. """
-    cache = Cache()
+    global cache  # This is a singleton if this is called multiple times, pylint: disable=global-statement
+
+    if cache is None:
+        cache = Cache()
 
     exit_code, out, err = run(cache, compiler, compiler_args)
 
