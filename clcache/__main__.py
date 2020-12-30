@@ -168,7 +168,9 @@ def main():
 
     printTraceStatement("Arguments we care about: '{}'".format(sys.argv))
 
-    exit_code, _stdout, _stderr = run(cache, compiler, options.compiler_args)
+    exit_code, _stdout, _stderr = run(
+        cache, compiler, options.compiler_args, os.environ
+    )
 
     return exit_code
 

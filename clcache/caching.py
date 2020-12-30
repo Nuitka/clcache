@@ -21,6 +21,7 @@ import subprocess
 import sys
 import threading
 from collections import defaultdict, namedtuple
+from copy import copy
 from ctypes import windll, wintypes
 from shutil import copyfile, copyfileobj, rmtree
 from tempfile import TemporaryFile
@@ -160,7 +161,7 @@ class Manifest:
     def __init__(self, entries=None):
         if entries is None:
             entries = []
-        self._entries = entries.copy()
+        self._entries = copy(entries)
 
     def entries(self):
         return self._entries
@@ -1658,26 +1659,27 @@ def createManifestEntry(manifestHash, includePaths):
     return ManifestEntry(safeIncludes, includesContentHash, cachekey)
 
 
-def run(cache, compiler, compiler_args):
+def run(cache, compiler, compiler_args, env):
     printTraceStatement("Found real compiler binary at '{0!s}'".format(compiler))
 
     if "CLCACHE_DISABLE" in os.environ:
-        return invokeRealCompiler(compiler, compiler_args)
+        exit_code, out, err = invokeRealCompiler(compiler, compiler_args, env)
+        return exit_code, [out], [err]
     else:
-        return processCompileRequest(cache, compiler, compiler_args)
+        return processCompileRequest(cache, compiler, compiler_args, env)
 
 
 cache = None
 
 
-def runClCache(compiler, compiler_args):
+def runClCache(compiler, compiler_args, env):
     """ Entry point, designed to be used by external tools like Nuitka's scons. """
     global cache  # This is a singleton if this is called multiple times, pylint: disable=global-statement
 
     if cache is None:
         cache = Cache()
 
-    exit_code, out, err = run(cache, compiler, compiler_args)
+    exit_code, out, err = run(cache, compiler, compiler_args, env)
 
     assert len(out) == 1 == len(err)
 
@@ -1702,10 +1704,10 @@ def printErrStr(message):
         print(message, file=sys.stderr)
 
 
-def processCompileRequest(cache, compiler, args):
+def processCompileRequest(cache, compiler, args, env):
     printTraceStatement("Parsing given commandline '{0!s}'".format(args))
 
-    cmdLine, environment = extendCommandLineFromEnvironment(args, os.environ)
+    cmdLine, environment = extendCommandLineFromEnvironment(args, env)
     cmdLine = expandCommandLine(cmdLine)
     printTraceStatement("Expanded commandline '{0!s}'".format(cmdLine))
 
@@ -1752,7 +1754,7 @@ def processCompileRequest(cache, compiler, args):
         )
         updateCacheStatistics(cache, Statistics.registerCallForPreprocessing)
 
-    exitCode, out, err = invokeRealCompiler(compiler, args)
+    exitCode, out, err = invokeRealCompiler(compiler, args, env)
     printOutAndErr(out, err)
     return exitCode, [out], [err]
 
@@ -1831,7 +1833,9 @@ def processSingleSource(compiler, cmdLine, sourceFile, objectFile, environment):
         if "CLCACHE_NODIRECT" in os.environ:
             return processNoDirect(cache, objectFile, compiler, cmdLine, environment)
         else:
-            return processDirect(cache, objectFile, compiler, cmdLine, sourceFile)
+            return processDirect(
+                cache, objectFile, compiler, cmdLine, sourceFile, environment
+            )
 
     except IncludeNotFoundException:
         return invokeRealCompiler(compiler, cmdLine, environment=environment), False
@@ -1839,7 +1843,7 @@ def processSingleSource(compiler, cmdLine, sourceFile, objectFile, environment):
         return e.getReturnTuple()
 
 
-def processDirect(cache, objectFile, compiler, cmdLine, sourceFile):
+def processDirect(cache, objectFile, compiler, cmdLine, sourceFile, env):
     manifestHash = ManifestRepository.getManifestHash(compiler, cmdLine, sourceFile)
     manifestHit = None
     with cache.manifestLockFor(manifestHash):
@@ -1883,7 +1887,9 @@ def processDirect(cache, objectFile, compiler, cmdLine, sourceFile):
             cmdLine = list(cmdLine)
             cmdLine.insert(0, "/showIncludes")
             stripIncludes = True
-    compilerResult = invokeRealCompiler(compiler, cmdLine, captureOutput=True)
+    compilerResult = invokeRealCompiler(
+        compiler, cmdLine, captureOutput=True, environment=env
+    )
     if manifestHit is None:
         includePaths, compilerOutput = parseIncludesSet(
             compilerResult[1], sourceFile, stripIncludes

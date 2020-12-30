@@ -51,9 +51,9 @@ class CacheMemcacheStrategy:
             clientClass = Client
             server = server[0]
         else:
-            from pymemcache.client.hash import (
+            from pymemcache.client.hash import (  # pylint: disable=I0021,import-error
                 HashClient,
-            )  # pylint: disable=I0021,import-error
+            )
 
             clientClass = HashClient
         self.client = clientClass(
