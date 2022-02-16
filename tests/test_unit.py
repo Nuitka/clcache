@@ -521,10 +521,6 @@ class TestAnalyzeCommandLine(unittest.TestCase):
         except AnalysisError as err:
             if isinstance(err, NoSourceFileError):
                 self.fail("analyze() unexpectedly raised an NoSourceFileError")
-            else:
-                # We just want to know if we got a proper source file.
-                # Other AnalysisErrors are ignored.
-                pass
 
     def _testFailure(self, cmdLine, expectedExceptionClass):
         self.assertRaises(expectedExceptionClass, lambda: CommandLineAnalyzer.analyze(cmdLine))
@@ -1133,7 +1129,7 @@ class TestCompression(unittest.TestCase):
             srcFilePath = os.path.join(self.testDir, "src")
             dstFilePath = os.path.join(self.testDir, "dst")
             with open(srcFilePath, "wb") as f:
-                for i in range(0, 999):
+                for i in range(999):
                     f.write(b"%d" % i)
             copyOrLink(srcFilePath, dstFilePath, True)
             size = os.path.getsize(dstFilePath)

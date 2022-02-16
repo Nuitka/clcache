@@ -156,10 +156,8 @@ class TestCompileRuns(unittest.TestCase):
 
     def testPipedOutput(self):
         def debugLinebreaks(text):
-            out = []
             lines = text.splitlines(True)
-            for line in lines:
-                out.append(line.replace("\r", "<CR>").replace("\n", "<LN>"))
+            out = [line.replace("\r", "<CR>").replace("\n", "<LN>") for line in lines]
             return "\n".join(out)
 
         commands = [
@@ -845,7 +843,7 @@ class RunParallelBase:
             clcache.Cache(tempDir)
             customEnv = self._createEnv(tempDir)
             cmd = CLCACHE_CMD + ["/nologo", "/EHsc", "/c"]
-            mpFlag = "/MP" + str(len(sources))
+            mpFlag = f'/MP{len(sources)}'
             out = subprocess.check_output(cmd + [mpFlag] + sources, env=customEnv).decode("ascii")
             # print the output so that it shows up in py.test
             print(out)
