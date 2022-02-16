@@ -70,8 +70,7 @@ def main():
 
     class RemainderSetAction(argparse.Action):
         def __call__(self, parser, namespace, values, optional_string=None):
-            nonCommand = getattr(namespace, "non_command", None)
-            if nonCommand:
+            if nonCommand := getattr(namespace, "non_command", None):
                 values.insert(0, nonCommand)
             setattr(namespace, self.dest, values)
 

@@ -63,7 +63,7 @@ class CacheMemcacheStrategy:
             deserializer=python_memcache_deserializer,
             timeout=5,
             connect_timeout=5,
-            key_prefix=(getStringHash(self.fileStrategy.dir) + "_").encode("UTF-8"),
+            key_prefix=f'{getStringHash(self.fileStrategy.dir)}_'.encode("UTF-8"),
         )
         # XX key_prefix ties fileStrategy cache to memcache entry
         # because tests currently the integration tests use this to start with clean cache
@@ -213,8 +213,7 @@ class CacheFileWithMemcacheFallbackStrategy:
         if self.localCache.hasEntry(key):
             printTraceStatement("Getting object {} from local cache".format(key))
             return self.localCache.getEntry(key)
-        remote = self.remoteCache.getEntry(key)
-        if remote:
+        if remote := self.remoteCache.getEntry(key):
             printTraceStatement("Getting object {} from remote cache".format(key))
             return remote
         return None
@@ -229,14 +228,12 @@ class CacheFileWithMemcacheFallbackStrategy:
         self.remoteCache.setManifest(manifestHash, manifest)
 
     def getManifest(self, manifestHash):
-        local = self.localCache.getManifest(manifestHash)
-        if local:
+        if local := self.localCache.getManifest(manifestHash):
             printTraceStatement(
                 "{} local manifest hit for {}".format(self, manifestHash)
             )
             return local
-        remote = self.remoteCache.getManifest(manifestHash)
-        if remote:
+        if remote := self.remoteCache.getManifest(manifestHash):
             with self.localCache.manifestLockFor(manifestHash):
                 self.localCache.setManifest(manifestHash, remote)
             printTraceStatement(

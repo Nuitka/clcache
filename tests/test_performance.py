@@ -45,9 +45,10 @@ class TestConcurrency(unittest.TestCase):
                 os.path.join(ASSETS_DIR, 'concurrency', 'file{:02d}.cpp'.format(i+1))
             )
 
-        cls.sources = []
-        for i in range(1, TestConcurrency.NUM_SOURCE_FILES+1):
-            cls.sources.append(os.path.join(ASSETS_DIR, 'concurrency', 'file{:02d}.cpp'.format(i)))
+        cls.sources = [
+            os.path.join(ASSETS_DIR, 'concurrency', 'file{:02d}.cpp'.format(i))
+            for i in range(1, TestConcurrency.NUM_SOURCE_FILES + 1)
+        ]
 
     def testConcurrentHitsScaling(self):
         with tempfile.TemporaryDirectory() as tempDir:
