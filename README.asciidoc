@@ -219,23 +219,6 @@ FileTracker : error FTK1011: could not create the new file tracking log file:
 This appears to be a known defect in MSbuild; the workaround is to disable file
 access tracking as described above.
 
-Slow performance when using a clcache executable built via PyInstaller
-----------------------------------------------------------------------
-
-The README file suggests to use PyInstaller to simplify deployment of clcache
-on build machines. While this is true, it was noted that using the --onefile
-argument to pyinstaller might slow things down considerably.
-
-Indeed, the documentation explains:
-
-The one executable file contains an embedded archive of all the Python modules
-used by your script, as well as compressed copies of any non-Python support
-files (e.g. .so files). The bootloader uncompresses the support files and
-writes copies into the the temporary folder. This can take a little time. That
-is why a one-file app is a little slower to start than a one-folder app.
-
-To avoid this overhead, make sure that you do not use the --onefile argument.
-
 clcachesrv prevents deletion of directories containing include files for which hash sums are cached
 ---------------------------------------------------------------------------------------------------
 
